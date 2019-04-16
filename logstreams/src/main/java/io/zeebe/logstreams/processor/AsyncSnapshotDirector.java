@@ -65,6 +65,7 @@ public class AsyncSnapshotDirector extends Actor {
   private final StreamProcessorMetrics metrics;
   private final String processorName;
   private final int maxSnapshots;
+  private final Consumer<Long> oldDataRemover;
 
   private ActorCondition commitCondition;
   private long lastWrittenEventPosition = INITIAL_POSITION;
@@ -81,7 +82,8 @@ public class AsyncSnapshotDirector extends Actor {
       Consumer<ActorCondition> conditionCheckOut,
       LongSupplier commitPositionSupplier,
       StreamProcessorMetrics metrics,
-      int maxSnapshots) {
+      int maxSnapshots,
+      Consumer<Long> oldDataRemover) {
     this.asyncLastProcessedPositionSupplier = asyncLastProcessedPositionSupplier;
     this.asyncLastWrittenPositionSupplier = asyncLastWrittenPositionSupplier;
     this.snapshotController = snapshotController;
@@ -93,6 +95,7 @@ public class AsyncSnapshotDirector extends Actor {
     this.snapshotRate = snapshotRate;
     this.metrics = metrics;
     this.maxSnapshots = Math.max(maxSnapshots, 1);
+    this.oldDataRemover = oldDataRemover;
   }
 
   @Override
@@ -146,8 +149,10 @@ public class AsyncSnapshotDirector extends Actor {
         lastProcessedPosition,
         (lowerBoundSnapshotPosition, error) -> {
           if (error == null) {
-            this.lowerBoundSnapshotPosition = lowerBoundSnapshotPosition;
-            takeSnapshot();
+            if (lowerBoundSnapshotPosition > this.lowerBoundSnapshotPosition) {
+              this.lowerBoundSnapshotPosition = lowerBoundSnapshotPosition;
+              takeSnapshot();
+            }
           } else {
             LOG.error(ERROR_MSG_ON_RESOLVE_PROCESSED_POS, error);
           }
@@ -197,6 +202,10 @@ public class AsyncSnapshotDirector extends Actor {
 
         try {
           snapshotController.ensureMaxSnapshotCount(maxSnapshots);
+          if (snapshotController.getValidSnapshotsCount() == maxSnapshots) {
+            oldDataRemover.accept(lowerBoundSnapshotPosition);
+          }
+
         } catch (Exception ex) {
           LOG.error(ERROR_MSG_ENSURING_MAX_SNAPSHOT_COUNT, ex);
         }

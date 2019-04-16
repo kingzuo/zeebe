@@ -64,6 +64,7 @@ public class ExporterManagerService implements Service<ExporterManagerService> {
   @Override
   public void start(ServiceStartContext startContext) {
     this.streamProcessorServiceFactory = streamProcessorServiceFactoryInjector.getValue();
+
     // load and validate exporters
     for (ExporterCfg exporterCfg : exporterCfgs) {
       try {
@@ -88,12 +89,18 @@ public class ExporterManagerService implements Service<ExporterManagerService> {
         .processorName(PROCESSOR_NAME)
         .snapshotController(snapshotController)
         .streamProcessorFactory(
-            (zeebeDb, dbContext) ->
-                new ExporterStreamProcessor(
-                    zeebeDb,
-                    dbContext,
-                    partition.getInfo().getPartitionId(),
-                    exporterRepository.getExporters().values()))
+            (zeebeDb, dbContext) -> {
+              final ExporterStreamProcessor exporterStreamProcessor =
+                  new ExporterStreamProcessor(
+                      zeebeDb,
+                      dbContext,
+                      partition.getInfo().getPartitionId(),
+                      exporterRepository.getExporters().values());
+              partition
+                  .getLogStream()
+                  .setExporterPositionSupplier(exporterStreamProcessor::getPositionToRecoveryFrom);
+              return exporterStreamProcessor;
+            })
         .build();
   }
 
