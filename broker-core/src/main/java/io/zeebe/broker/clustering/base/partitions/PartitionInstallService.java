@@ -46,6 +46,7 @@ import io.zeebe.servicecontainer.ServiceStartContext;
 import io.zeebe.servicecontainer.ServiceStopContext;
 import io.zeebe.util.sched.Actor;
 import io.zeebe.util.sched.future.ActorFuture;
+import io.zeebe.util.sched.future.CompletableActorFuture;
 import org.slf4j.Logger;
 
 /**
@@ -70,6 +71,8 @@ public class PartitionInstallService extends Actor
   private String logName;
   private ActorFuture<PartitionLeaderElection> leaderElectionInstallFuture;
   private PartitionLeaderElection leaderElection;
+
+  private ActorFuture<Void> transitionFuture;
 
   public PartitionInstallService(final RaftPersistentConfiguration configuration) {
     this.configuration = configuration;
@@ -139,17 +142,44 @@ public class PartitionInstallService extends Actor
   public void onTransitionToLeader(int partitionId, long term) {
     actor.call(
         () -> {
-          removeFollowerPartitionService();
-          installLeaderPartition(term);
+          final CompletableActorFuture<Void> nextTransitionFuture = new CompletableActorFuture<>();
+          if (transitionFuture != null && !transitionFuture.isDone()) {
+            // wait until previous transition is complete
+            actor.runOnCompletion(
+                transitionFuture, (r, e) -> transitionToLeader(nextTransitionFuture, term));
+
+          } else {
+            transitionToLeader(nextTransitionFuture, term);
+          }
+          transitionFuture = nextTransitionFuture;
         });
+  }
+
+  private void transitionToLeader(CompletableActorFuture<Void> transitionComplete, long term) {
+    removeFollowerPartitionService();
+    actor.runOnCompletion(
+        installLeaderPartition(term), (r, e) -> transitionComplete.complete(null));
   }
 
   public void onTransitionToFollower(int partitionId) {
     actor.call(
         () -> {
-          removeLeaderPartitionService();
-          installFollowerPartition();
+          final CompletableActorFuture<Void> nextTransitionFuture = new CompletableActorFuture<>();
+          if (transitionFuture != null && !transitionFuture.isDone()) {
+            // wait until previous transition is complete
+            actor.runOnCompletion(
+                transitionFuture, (r, e) -> transitionToFollower(nextTransitionFuture));
+
+          } else {
+            transitionToFollower(nextTransitionFuture);
+          }
+          transitionFuture = nextTransitionFuture;
         });
+  }
+
+  private void transitionToFollower(CompletableActorFuture<Void> transitionComplete) {
+    removeLeaderPartitionService();
+    actor.runOnCompletion(installFollowerPartition(), (r, e) -> transitionComplete.complete(null));
   }
 
   private void removeLeaderPartitionService() {
@@ -164,7 +194,7 @@ public class PartitionInstallService extends Actor
     }
   }
 
-  private void installLeaderPartition(long leaderTerm) {
+  private ActorFuture<Partition> installLeaderPartition(long leaderTerm) {
     LOG.debug(
         "Installing leader partition service for partition {}", partitionInfo.getPartitionId());
     final Partition partition = new Partition(partitionInfo, RaftState.LEADER);
@@ -186,7 +216,7 @@ public class PartitionInstallService extends Actor
         .dependency(distributedLogPartitionServiceName(logName))
         .install();
 
-    startContext
+    return startContext
         .createService(leaderPartitionServiceName, partition)
         .dependency(openLogStreamServiceName)
         .dependency(logStreamServiceName, partition.getLogStreamInjector())
@@ -195,12 +225,12 @@ public class PartitionInstallService extends Actor
         .install();
   }
 
-  private void installFollowerPartition() {
+  private ActorFuture<Partition> installFollowerPartition() {
     LOG.debug(
         "Installing follower partition service for partition {}", partitionInfo.getPartitionId());
     final Partition partition = new Partition(partitionInfo, RaftState.FOLLOWER);
 
-    startContext
+    return startContext
         .createService(followerPartitionServiceName, partition)
         .dependency(logStreamServiceName, partition.getLogStreamInjector())
         .dependency(stateStorageFactoryServiceName, partition.getStateStorageFactoryInjector())
