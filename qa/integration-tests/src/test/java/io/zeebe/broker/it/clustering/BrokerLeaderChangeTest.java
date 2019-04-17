@@ -149,10 +149,9 @@ public class BrokerLeaderChangeTest {
     // Force repeated leader change
     election.async().anoint("0");
     election.async().anoint("1");
-    election.async().anoint("2");
+    election.anoint("2");
 
     assertThat(election.getLeadership().leader().id()).isEqualTo(String.valueOf(2));
-
     waitUntil(() -> clusteringRule.getLeaderForPartition(partition).getNodeId() == 2);
 
     // then
@@ -169,14 +168,14 @@ public class BrokerLeaderChangeTest {
 
     // other nodes has stopped leader services
     assertBrokerNoService(
-        getBroker(1), PartitionServiceNames.leaderPartitionServiceName(partitionName));
-    assertBrokerHasService(
-        getBroker(1), PartitionServiceNames.followerPartitionServiceName(partitionName));
-
-    assertBrokerNoService(
         getBroker(0), PartitionServiceNames.leaderPartitionServiceName(partitionName));
     assertBrokerHasService(
         getBroker(0), PartitionServiceNames.followerPartitionServiceName(partitionName));
+
+    assertBrokerNoService(
+        getBroker(1), PartitionServiceNames.leaderPartitionServiceName(partitionName));
+    assertBrokerHasService(
+        getBroker(1), PartitionServiceNames.followerPartitionServiceName(partitionName));
   }
 
   @Test

@@ -18,7 +18,7 @@
 package io.zeebe.broker.clustering.base.topology;
 
 import io.atomix.core.Atomix;
-import io.zeebe.broker.clustering.base.partitions.PartitionLeaderElection;
+import io.zeebe.broker.clustering.base.partitions.Partition;
 import io.zeebe.broker.system.configuration.ClusterCfg;
 import io.zeebe.servicecontainer.Injector;
 import io.zeebe.servicecontainer.Service;
@@ -29,11 +29,20 @@ import io.zeebe.servicecontainer.ServiceStopContext;
 public class TopologyManagerService implements Service<TopologyManager> {
   private TopologyManagerImpl topologyManager;
 
-  private final ServiceGroupReference<PartitionLeaderElection> leaderElectionReference =
-      ServiceGroupReference.<PartitionLeaderElection>create()
+  private final ServiceGroupReference<Partition> leaderInstallReference =
+      ServiceGroupReference.<Partition>create()
           .onAdd(
-              (name, election) ->
-                  topologyManager.onLeaderElectionStarted((PartitionLeaderElection) election))
+              (name, partition) ->
+                  topologyManager.updateRole(
+                      partition.getState(), partition.getInfo().getPartitionId()))
+          .build();
+
+  private final ServiceGroupReference<Partition> followerInstallReference =
+      ServiceGroupReference.<Partition>create()
+          .onAdd(
+              (name, partition) ->
+                  topologyManager.updateRole(
+                      partition.getState(), partition.getInfo().getPartitionId()))
           .build();
 
   private final NodeInfo localMember;
@@ -64,8 +73,12 @@ public class TopologyManagerService implements Service<TopologyManager> {
     return topologyManager;
   }
 
-  public ServiceGroupReference<PartitionLeaderElection> getLeaderElectionReference() {
-    return leaderElectionReference;
+  public ServiceGroupReference<Partition> getLeaderInstallReference() {
+    return leaderInstallReference;
+  }
+
+  public ServiceGroupReference<Partition> getFollowerInstallReference() {
+    return followerInstallReference;
   }
 
   public Injector<Atomix> getAtomixInjector() {
