@@ -76,11 +76,11 @@ public class BrokerInfo {
       memberProperties.setProperty(
           PROPERTY_NAME, OBJECT_MAPPER.writeValueAsString(distributionInfo));
     } catch (JsonProcessingException e) {
-      Loggers.PROTOCOL_LOGGER.warn(
+      Loggers.PROTOCOL_LOGGER.error(
           "Couldn't write broker info {} into member properties {}",
           distributionInfo,
           memberProperties,
-          e.getMessage());
+          e);
     }
   }
 
