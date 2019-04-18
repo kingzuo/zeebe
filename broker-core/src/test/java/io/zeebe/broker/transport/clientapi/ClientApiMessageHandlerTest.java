@@ -37,7 +37,7 @@ import io.zeebe.logstreams.LogStreams;
 import io.zeebe.logstreams.log.BufferedLogStreamReader;
 import io.zeebe.logstreams.log.LogStream;
 import io.zeebe.logstreams.log.LoggedEvent;
-import io.zeebe.logstreams.state.DataStorage;
+import io.zeebe.logstreams.state.StateStorage;
 import io.zeebe.protocol.Protocol;
 import io.zeebe.protocol.clientapi.ErrorCode;
 import io.zeebe.protocol.clientapi.ErrorResponseDecoder;
@@ -119,7 +119,7 @@ public class ClientApiMessageHandlerTest {
       e.printStackTrace();
     }
 
-    final DataStorage stateStorage = new DataStorage(runtime, snapshots);
+    final StateStorage stateStorage = new StateStorage(runtime, snapshots);
 
     final String logName = "test";
 
